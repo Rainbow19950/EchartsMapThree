@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head >
+    <meta charset="utf-8">
+    <script type="text/javascript" src="echarts.min.js"></script>
+    <script type="text/javascript" src="jquery.js"></script>
+    <script type="text/javascript" src="china-main-city-map.js" charset="utf-8"></script>
+</head>
+
+<body>
+<div id= "main" style="width:1350px;height:600px;"></div>
+
+<script type="text/javascript">
+    function randomData() {
+        return Math.round(Math.random()*10);
+    }
+    var myChart = echarts.init(document.getElementById('main'));
+    //存储切换的每一级地图信息
+    var mapStack = [];
+    var timeFn = null;
+    var curMap = {};
+    //初始化地图
+    loadMap('100000', 'china');
+    /**
+     绑定用户切换地图区域事件
+     cityMap对象存储着地图区域名称和区域的信息(name-code)
+     当mapCode有值,说明可以切换到下级地图
+     同时保存上级地图的编号和名称
+     */
+    myChart.on('mapselectchanged', function(params) {
+        var name = params.batch[0].name;
+        console.log(params);
+        var mapCode = cityMap[name];
+        if (!mapCode) {
+            alert('无此区域地图显示');
+            return;
+        }
+        loadMap(mapCode, name);
+        //将上一级地图信息压入mapStack
+        mapStack.push({
+            mapCode: curMap.mapCode,
+            mapName: curMap.mapName
+        });
+    });
+    /**
+     绑定右击事件，并加载上一级地图
+     */
+    myChart.on('contextmenu', function(params) {
+        //当双击事件发生时，清除单击事件，仅响应双击事件
+        clearTimeout(timeFn);
+        var map = mapStack.pop();
+        if (!mapStack.length && !map) {
+            alert('已经到达最上一级地图了');
+            return;
+        }
+        loadMap(map.mapCode, map.mapName);
+    });
+    /**
+     加载地图：根据地图所在省市的行政编号，
+     获取对应的json地图数据，然后向echarts注册该区域的地图
+     最后加载地图信息
+     @params {String} mapCode:地图行政编号,for example['中国':'100000', '湖南': '430000']
+     @params {String} mapName: 地图名称
+     */
+    function loadMap(mapCode, mapName) {
+        $.getJSON('china-main-city/' + mapCode + '.json', function (data) {
+            if (data) {  //  这里获取到对应json中的数据
+                var arr = [{}];
+                if(data.features[0].id == 710000){
+                    //  在地图层级为全国地图时,数据的第一个是编码为710000的台湾,
+                    // 通过这个来确定是否要对南海诸岛做处理
+                    for (let i = 0; i< data.features.length;i++){
+                        let line = data.features[i].properties.name;
+                        arr.push({name:line,value:randomData()});  //  除南海诸岛之外的循环赋值就可以
+                    }
+                    arr.push({name:'南海诸岛',value:0})  //  由于南海诸岛不在上述类型中,这单独设置值
+                } else {  // 如果显示的不是全国地图,那么只需要对地图中的城市添加数据即可,南海诸岛不用设置,不展示
+                    for (let i = 0; i< data.features.length;i++){
+                        let line = data.features[i].properties.name;
+                        arr.push({name:line,value:randomData()});
+                    }
+                }
+                echarts.registerMap(mapName, data);
+                var option = {
+                    tooltip: {
+                        trigger: 'item',
+                        formatter: '{b0}: {c0}'
+                    },
+                    visualMap: {
+                        min: 0,
+                        max: 10,
+                        left: 'left',
+                        inRange: {
+                            color: ['#FFF','rgb(200,93,92)']
+                            // 这里可以控制颜色，因为我们做的是地图，最少设置两个，value值的增大会导致颜色的渐变，可以多改几个尝试一下
+                        },
+                        top: 'bottom',
+                        text: ['高','低'],     // 文本，默认为数值文本
+                        calculable: true
+                    },
+                    series: [
+                        {
+                            name: '',
+                            type: 'map',
+                            itemStyle:{
+                                normal:{
+                                    label:{
+                                        show:true
+                                    },
+                                    borderWidth:1,
+                                    color:'#000',
+                                    show: true
+                                }
+                            },
+                            mapType: mapName,
+                            selectedMode : 'multiple',
+                            data:arr
+//                        此处为数据，颜色是通过数值来改变的，数值从小到大，展现为color中的从左向右的颜色转变
+                        }
+                    ]
+                };
+                myChart.setOption(option);
+                curMap = {
+                    mapCode: mapCode,
+                    mapName: mapName
+                };
+            } else {
+                alert('无法加载该地图');
+            }
+        });
+    }
+</script>
+</body>
+</html>
